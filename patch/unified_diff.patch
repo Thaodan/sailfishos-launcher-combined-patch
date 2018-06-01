@@ -1,135 +1,7 @@
-diff --git a/launcher/Launcher.qml b/launcher/Launcher.qml
-index 40f0fe2..76e6cf1 100644
---- a/usr/share/lipstick-jolla-home-qt5/launcher/Launcher.qml
-+++ b/usr/share/lipstick-jolla-home-qt5/launcher/Launcher.qml
-@@ -10,17 +10,28 @@ import org.nemomobile.lipstick 0.1
- import Sailfish.Silica 1.0
- import Sailfish.Silica.private 1.0 as SilicaPrivate
- import Sailfish.Lipstick 1.0
--import org.nemomobile.dbus 2.0
-+import org.nemomobile.configuration 1.0
- import com.jolla.lipstick 0.1
- 
- SilicaListView {
-     id: launcherPager
- 
-+    ConfigurationGroup {
-+        id: launcherSettings
-+        path: "/apps/lipstick-jolla-home-qt5/launcher"
-+        property bool freeScroll: false
-+        property bool useScroll: true
-+        onFreeScrollChanged: launcher.manageDummyPages()
-+    }    
-+
-     property bool launcherActive: Lipstick.compositor.launcherLayer.active
-     onLauncherActiveChanged: if (!launcherActive) { resetPosition(400) }
- 
-     property bool editMode: launcher.launcherEditMode
-     onEditModeChanged: {
-+        if (launcherSettings.freeScroll) {
-+            return
-+        }
-         if (editMode) {
-             snapMode = ListView.NoSnap
-             highlightRangeMode = ListView.NoHighlightRange
-@@ -30,13 +41,18 @@ SilicaListView {
-         }
-     }
- 
-+    VerticalScrollDecorator {
-+        flickable: launcherPager
-+        visible: launcherSettings.freeScroll && launcherSettings.useScroll && launcherPager.contentHeight > launcherPager.height
-+    }
-+
-     model: ListModel {}
-     delegate: Item {
-         width: launcherPager.width
--        height: launcherPager.height
-+        height: launcherSettings.freeScroll ? launcher.cellHeight : launcherPager.height
-     }
--    snapMode: ListView.SnapOneItem
--    highlightRangeMode: ListView.StrictlyEnforceRange
-+    snapMode: launcherSettings.freeScroll ? ListView.NoSnap : ListView.SnapOneItem
-+    highlightRangeMode: launcherSettings.freeScroll ? ListView.NoHighlightRange : ListView.StrictlyEnforceRange
-     cacheBuffer: height*model.count
-     maximumFlickVelocity: 4000*Theme.pixelRatio
-     highlightMoveDuration: 300
-@@ -121,8 +137,6 @@ SilicaListView {
- 
-         LauncherGrid {
-             id: launcher
--            property Item remorse
--            property bool removeApplicationEnabled
- 
-             launcherEditMode: removeApplicationEnabled && !openedChildFolder
- 
-@@ -175,11 +189,13 @@ SilicaListView {
-             Component.onCompleted: manageDummyPages()
-             onContentHeightChanged: manageDummyPages()
-             onLauncherEditModeChanged: manageDummyPages()
-+            onColumnsChanged: manageDummyPages()
-+            onCountChanged: manageDummyPages()
- 
-             function manageDummyPages() {
-                 if (launcherPager.height > 0) {
-                     // Create dummy pages to allow paging
--                    var pageCount = Math.ceil(contentHeight/launcherPager.height)
-+                    var pageCount = launcherSettings.freeScroll ? Math.ceil(count / columns) : Math.ceil(contentHeight/launcherPager.height)
-                     while (launcherPager.model.count < pageCount) {
-                         launcherPager.model.append({ "name": "dummy" })
-                     }
-@@ -193,46 +209,6 @@ SilicaListView {
-             SilicaPrivate.VisibilityCull {
-                 target: launcher.contentItem
-             }
--
--            function removeApplication(desktopFile, title) {
--                if (!remorse) {
--                    remorse = remorseComponent.createObject(launcherPager)
--                } else if (remorse.desktopFile !== "" && remorse.desktopFile !== desktopFile) {
--                    remorse.removePackageByDesktopFile()
--                    remorse.cancel()
--                }
--                remorse.desktopFile = desktopFile
--
--                //: Notification indicating that an application will be removed, %1 will be replaced by application name
--                //% "Removing %1"
--                remorse.execute(qsTrId("lipstick-jolla-home-no-removing").arg(title))
--            }
--
--            Component {
--                id: remorseComponent
--
--                RemorsePopup {
--                    property string desktopFile
--
--                    function removePackageByDesktopFile() {
--                        if (desktopFile !== "") {
--                            storeClientInterface.call("removePackageByDesktopFile", desktopFile)
--                            desktopFile = ""
--                        }
--                    }
--
--                    z: 100
--                    onTriggered: removePackageByDesktopFile()
--                    onCanceled: desktopFile = ""
--
--                    DBusInterface {
--                        id: storeClientInterface
--                        service: "com.jolla.jollastore"
--                        path: "/StoreClient"
--                        iface: "com.jolla.jollastore"
--                    }
--                }
--            }
-         }
-     }
- }
-diff --git a/launcher/LauncherFolder.qml b/launcher/LauncherFolder.qml
-index 3b9a354..af82f9a 100644
---- a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherFolder.qml
-+++ b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherFolder.qml
-@@ -12,39 +12,21 @@ import Sailfish.Silica.private 1.0
+diff -ur a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherFolder.qml b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherFolder.qml
+--- a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherFolder.qml	2018-06-01 08:21:43.581080685 +0200
++++ b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherFolder.qml	2018-06-01 08:26:45.678168021 +0200
+@@ -12,39 +12,21 @@
  import Sailfish.Lipstick 1.0
  import com.jolla.lipstick 0.1
  
@@ -155,9 +27,8 @@ index 3b9a354..af82f9a 100644
 -        opacity = 0.0
 -        enabled = false
 -        destroy(450)
-+        reject()
-     }
- 
+-    }
+-
 -    z: 10
 -    opacity: 0.0
 -    Behavior on opacity { SmoothedAnimation { duration: 400; velocity: 1000 / duration } }
@@ -165,8 +36,9 @@ index 3b9a354..af82f9a 100644
 -    gradient: Gradient {
 -        GradientStop { position: 0.0; color: Theme.rgba("black", 1.0) }
 -        GradientStop { position: 1.0; color: Theme.rgba("black", 0.8) }
--    }
--
++        reject()
+     }
+ 
 -    width: launcherPager.width
 -    height: launcherPager.height
 -
@@ -175,7 +47,7 @@ index 3b9a354..af82f9a 100644
      Connections {
          target: Lipstick.compositor
          onDisplayOff: launcherFolder.close()
-@@ -91,7 +73,7 @@ Rectangle {
+@@ -91,7 +73,7 @@
                  } else if (selectIcon) {
                      selectIcon = false
                  } else if (!launcherGrid.launcherEditMode) {
@@ -184,7 +56,7 @@ index 3b9a354..af82f9a 100644
                  }
                  launcherGrid.setEditMode(false)
              }
-@@ -100,11 +82,12 @@ Rectangle {
+@@ -100,11 +82,12 @@
          Rectangle {
              id: header
              width: parent.width
@@ -198,7 +70,7 @@ index 3b9a354..af82f9a 100644
  
              Image {
                  anchors.horizontalCenter: parent.horizontalCenter
-@@ -112,22 +95,23 @@ Rectangle {
+@@ -112,22 +95,23 @@
              }
  
              MouseArea {
@@ -230,7 +102,7 @@ index 3b9a354..af82f9a 100644
                      }
                  }
                  onClicked: {
-@@ -145,7 +129,7 @@ Rectangle {
+@@ -145,7 +129,7 @@
              TextField {
                  id: titleEditor
                  anchors {
@@ -239,7 +111,7 @@ index 3b9a354..af82f9a 100644
                      leftMargin: -Theme.paddingLarge
                      right: parent.right
                      verticalCenter: parent.verticalCenter
-@@ -179,8 +163,8 @@ Rectangle {
+@@ -179,8 +163,8 @@
                  anchors {
                      right: titleEditor.right
                      rightMargin: Theme.horizontalPageMargin
@@ -250,7 +122,7 @@ index 3b9a354..af82f9a 100644
                  }
                  font.pixelSize: Theme.fontSizeSmall
                  color: Theme.highlightColor
-@@ -197,8 +181,8 @@ Rectangle {
+@@ -197,8 +181,8 @@
              // Use a clipper item to clip slightly outside the GridView area
              anchors.top: header.bottom
              width: parent.width
@@ -261,7 +133,7 @@ index 3b9a354..af82f9a 100644
  
              LauncherGrid {
                  id: launcherGrid
-@@ -213,7 +197,6 @@ Rectangle {
+@@ -213,7 +197,6 @@
                  }
  
                  gridManager.dragContainer: launcherFolder
@@ -269,7 +141,7 @@ index 3b9a354..af82f9a 100644
  
                  NumberAnimation {
                      id: contentYAnimation
-@@ -236,23 +219,24 @@ Rectangle {
+@@ -236,23 +219,24 @@
                              } else if (selectIcon) {
                                  selectIcon = false
                              } else if (!launcherGrid.launcherEditMode) {
@@ -297,7 +169,7 @@ index 3b9a354..af82f9a 100644
              }
          }
  
-@@ -263,21 +247,19 @@ Rectangle {
+@@ -263,21 +247,19 @@
                  if (item) {
                      // The odd launcherGrid.reorderItem.y line below is to force revaluation of this binding
                      launcherGrid.reorderItem.y
@@ -324,7 +196,7 @@ index 3b9a354..af82f9a 100644
              Behavior on opacity { FadeAnimation {} }
              color: Theme.highlightDimmerColor
              gradient: Gradient {
-@@ -328,18 +310,19 @@ Rectangle {
+@@ -328,18 +310,19 @@
                      id: folderIconGrid
                      columns: Math.floor(launcherGrid.width/launcherGrid.cellWidth)
                      Repeater {
@@ -347,10 +219,9 @@ index 3b9a354..af82f9a 100644
                                  icon: "image://theme/icon-launcher-folder-" + (index >= 9 ? (index+1) : "0" + (index+1))
                                  pressed: folderIcon.pressed && folderIcon.containsMouse
                                  opacity: icon.indexOf(launcherFolder.model.iconId) !== -1 ? 0.3 : 1.0
-diff --git a/launcher/LauncherGrid.qml b/launcher/LauncherGrid.qml
-index 2360cb0..a7237b5 100644
---- a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherGrid.qml
-+++ b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherGrid.qml
+diff -ur a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherGrid.qml b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherGrid.qml
+--- a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherGrid.qml	2018-06-01 08:21:43.581080685 +0200
++++ b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherGrid.qml	2018-06-01 08:26:45.678168021 +0200
 @@ -13,23 +13,62 @@
  import Sailfish.Policy 1.0
  import Sailfish.Lipstick 1.0
@@ -493,12 +364,138 @@ index 2360cb0..a7237b5 100644
              }
          }
      }
-
-diff --git a/launcher/LauncherView.qml b/launcher/LauncherView.qml
-index 44e2122..9e3377a 100644
---- a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherView.qml
-+++ b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherView.qml
-@@ -3,6 +3,9 @@ import QtQuick 2.0
+diff -ur a/usr/share/lipstick-jolla-home-qt5/launcher/Launcher.qml b/usr/share/lipstick-jolla-home-qt5/launcher/Launcher.qml
+--- a/usr/share/lipstick-jolla-home-qt5/launcher/Launcher.qml	2018-06-01 08:21:43.581080685 +0200
++++ b/usr/share/lipstick-jolla-home-qt5/launcher/Launcher.qml	2018-06-01 08:31:51.401846827 +0200
+@@ -11,17 +11,28 @@
+ import Sailfish.Silica.private 1.0 as SilicaPrivate
+ import Sailfish.Policy 1.0
+ import Sailfish.Lipstick 1.0
+-import org.nemomobile.dbus 2.0
++import org.nemomobile.configuration 1.0
+ import com.jolla.lipstick 0.1
+ 
+ SilicaListView {
+     id: launcherPager
+ 
++    ConfigurationGroup {
++        id: launcherSettings
++        path: "/apps/lipstick-jolla-home-qt5/launcher"
++        property bool freeScroll: false
++        property bool useScroll: true
++        onFreeScrollChanged: launcher.manageDummyPages()
++    }    
++
+     property bool launcherActive: Lipstick.compositor.launcherLayer.active
+     onLauncherActiveChanged: if (!launcherActive) { resetPosition(400) }
+ 
+     property bool editMode: launcher.launcherEditMode
+     onEditModeChanged: {
++        if (launcherSettings.freeScroll) {
++            return
++        }
+         if (editMode) {
+             snapMode = ListView.NoSnap
+             highlightRangeMode = ListView.NoHighlightRange
+@@ -31,13 +42,18 @@
+         }
+     }
+ 
++    VerticalScrollDecorator {
++        flickable: launcherPager
++        visible: launcherSettings.freeScroll && launcherSettings.useScroll && launcherPager.contentHeight > launcherPager.height
++    }
++
+     model: ListModel {}
+     delegate: Item {
+         width: launcherPager.width
+-        height: launcherPager.height
++        height: launcherSettings.freeScroll ? launcher.cellHeight : launcherPager.height
+     }
+-    snapMode: ListView.SnapOneItem
+-    highlightRangeMode: ListView.StrictlyEnforceRange
++    snapMode: launcherSettings.freeScroll ? ListView.NoSnap : ListView.SnapOneItem
++    highlightRangeMode: launcherSettings.freeScroll ? ListView.NoHighlightRange : ListView.StrictlyEnforceRange
+     cacheBuffer: height*model.count
+     maximumFlickVelocity: 4000*Theme.pixelRatio
+     highlightMoveDuration: 300
+@@ -122,8 +138,6 @@
+ 
+         LauncherGrid {
+             id: launcher
+-            property Item remorse
+-            property bool removeApplicationEnabled
+ 
+             launcherEditMode: removeApplicationEnabled && !openedChildFolder
+ 
+@@ -163,11 +177,13 @@
+             Component.onCompleted: manageDummyPages()
+             onContentHeightChanged: manageDummyPages()
+             onLauncherEditModeChanged: manageDummyPages()
++            onColumnsChanged: manageDummyPages()
++            onCountChanged: manageDummyPages()
+ 
+             function manageDummyPages() {
+                 if (launcherPager.height > 0) {
+                     // Create dummy pages to allow paging
+-                    var pageCount = Math.ceil(contentHeight/launcherPager.height)
++                    var pageCount = launcherSettings.freeScroll ? Math.ceil(count / columns) : Math.ceil(contentHeight/launcherPager.height)
+                     while (launcherPager.model.count < pageCount) {
+                         launcherPager.model.append({ "name": "dummy" })
+                     }
+@@ -181,46 +197,6 @@
+             SilicaPrivate.VisibilityCull {
+                 target: launcher.contentItem
+             }
+-
+-            function removeApplication(desktopFile, title) {
+-                if (!remorse) {
+-                    remorse = remorseComponent.createObject(launcherPager)
+-                } else if (remorse.desktopFile !== "" && remorse.desktopFile !== desktopFile) {
+-                    remorse.removePackageByDesktopFile()
+-                    remorse.cancel()
+-                }
+-                remorse.desktopFile = desktopFile
+-
+-                //: Notification indicating that an application will be removed, %1 will be replaced by application name
+-                //% "Removing %1"
+-                remorse.execute(qsTrId("lipstick-jolla-home-no-removing").arg(title))
+-            }
+-
+-            Component {
+-                id: remorseComponent
+-
+-                RemorsePopup {
+-                    property string desktopFile
+-
+-                    function removePackageByDesktopFile() {
+-                        if (desktopFile !== "") {
+-                            installationHandler.call("removePackageByDesktopFile", desktopFile)
+-                            desktopFile = ""
+-                        }
+-                    }
+-
+-                    z: 100
+-                    onTriggered: removePackageByDesktopFile()
+-                    onCanceled: desktopFile = ""
+-
+-                    DBusInterface {
+-                        id: installationHandler
+-                        service: "org.sailfishos.installationhandler"
+-                        path: "/org/sailfishos/installationhandler"
+-                        iface: "org.sailfishos.installationhandler"
+-                    }
+-                }
+-            }
+         }
+     }
+ }
+Nur in b/usr/share/lipstick-jolla-home-qt5/launcher: Launcher.qml.orig.
+Nur in b/usr/share/lipstick-jolla-home-qt5/launcher: Launcher.qml.rej.
+diff -ur a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherView.qml b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherView.qml
+--- a/usr/share/lipstick-jolla-home-qt5/launcher/LauncherView.qml	2018-06-01 08:21:43.581080685 +0200
++++ b/usr/share/lipstick-jolla-home-qt5/launcher/LauncherView.qml	2018-06-01 08:26:45.678168021 +0200
+@@ -3,6 +3,9 @@
  import org.nemomobile.lipstick 0.1
  import Sailfish.Silica 1.0
  import com.jolla.lipstick 0.1
@@ -508,7 +505,7 @@ index 44e2122..9e3377a 100644
  import "../main"
  
  ApplicationWindow {
-@@ -14,21 +17,92 @@ ApplicationWindow {
+@@ -14,21 +17,92 @@
  
      allowedOrientations: Lipstick.compositor.topmostWindowOrientation
  
@@ -605,11 +602,10 @@ index 44e2122..9e3377a 100644
              width: parent.width
          }
  
-diff --git a/layers/LauncherLayer.qml b/layers/LauncherLayer.qml
-index eb1a50d..1fe05eb 100644
---- a/usr/share/lipstick-jolla-home-qt5/layers/LauncherLayer.qml
-+++ b/usr/share/lipstick-jolla-home-qt5/layers/LauncherLayer.qml
-@@ -10,6 +10,8 @@ EdgeLayer {
+diff -ur a/usr/share/lipstick-jolla-home-qt5/layers/LauncherLayer.qml b/usr/share/lipstick-jolla-home-qt5/layers/LauncherLayer.qml
+--- a/usr/share/lipstick-jolla-home-qt5/layers/LauncherLayer.qml	2018-06-01 08:25:43.376122833 +0200
++++ b/usr/share/lipstick-jolla-home-qt5/layers/LauncherLayer.qml	2018-06-01 08:26:45.678168021 +0200
+@@ -10,6 +10,8 @@
      property bool allowed
      property bool closedFromBottom
  
